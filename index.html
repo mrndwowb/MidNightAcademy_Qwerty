@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Midnight Academy</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Georgia, serif;
+        }
+        body {
+            background-color: #0b0b1a;
+            color: #e2e2ff;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            width: 100%;
+        }
+        .intro-screen {
+            text-align: center;
+            margin-top: 60px;
+        }
+        .intro-screen h1 {
+            font-size: 2.8rem;
+            color: #c9c9ff;
+            text-shadow: 0 0 12px #7070ff;
+        }
+        .btn {
+            background-color: #252550;
+            color: #e2e2ff;
+            border: 1px solid #7070ff;
+            padding: 10px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 4px;
+        }
+        .btn:hover {
+            background-color: #383878;
+            box-shadow: 0 0 8px #7070ff77;
+        }
+        .workspace {
+            display: none;
+        }
+        .panel {
+            border: 1px solid #3a3a70;
+            padding: 16px;
+            border-radius: 8px;
+            margin:12px 0;
+            background-color: #14142c;
+        }
+        .row-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap:14px;
+        }
+        @keyframes successGlow {
+            0% {box-shadow:0 0 4px #44ff8855;}
+            50% {box-shadow:0 0 18px #44ff88aa;}
+            100% {box-shadow:0 0 4px #44ff8855;}
+        }
+        @keyframes failShake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            50% { transform: translateX(6px); }
+            75% { transform: translateX(-6px); }
+            100% { transform: translateX(0); }
+        }
+        .result-box {
+            min-height:140px;
+            white-space: pre-wrap;
+        }
+        .animate-success {
+            animation: successGlow 0.7s ease-out;
+        }
+        .animate-fail {
+            animation: failShake 0.4s ease-out;
+            border-color:#ff5566;
+        }
+        .log-area {
+            max-height:260px;
+            overflow-y:auto;
+            font-size:0.88rem;
+            color:#c0c0dd;
+        }
+        .trial-hidden {
+            display:none;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Intro Screen -->
+    <div id="introScreen" class="intro-screen">
+        <h1>The Midnight Academy</h1>
+        <p>At midnight the campus falls quiet. In dreams, the university transforms into an academy that only exists after midnight.<br>Every discipline is a form of magic, bound by real-world knowledge rules.</p>
+        <button class="btn" onclick="enterAcademy()">Enter the Academy (Dream)</button>
+    </div>
+
+    <!-- Main Workspace -->
+    <div id="workspaceScreen" class="workspace">
+        <h2>The Midnight Academy — Apprentice Workspace</h2>
+
+        <div class="panel">
+            <h3>1. Select Magic Schools (max 2)</h3>
+            <label><input type="checkbox" id="school-tw" onchange="toggleSchool('ThreadWeaver')"> 🧵 Thread-Weaver (Graph Theory)</label>
+            <br>
+            <label><input type="checkbox" id="school-hk" onchange="toggleSchool('HeatKeeper')"> 🔥 Heat-Keeper (Thermodynamics)</label>
+            <br>
+            <label><input type="checkbox" id="school-es" onchange="toggleSchool('EchoShaper')"> 🗣️ Echo-Shaper (Sociolinguistics)</label>
+            <p id="schoolWarning" style="color:#ff9999"></p>
+        </div>
+
+        <div class="row-layout">
+            <div class="panel">
+                <h3>2. Cast Spells</h3>
+                <div id="spellButtonsArea"></div>
+                <hr>
+                <h4>Challenge Trials (rule‑puzzles, no fighting)</h4>
+                <button class="btn" onclick="openTrial()">Begin Trial</button>
+                <div id="trialBox" class="trial-hidden panel">
+                    <div id="trialText"></div>
+                    <button class="btn" onclick="closeTrial()">Close Trial</button>
+                </div>
+            </div>
+
+            <div class="panel result-box" id="resultPanel">
+                <h3>✨ Magic Result</h3>
+                <div id="resultText"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>📜 Experiment Log (saved locally in browser)</h3>
+            <div id="logArea" class="log-area"></div>
+            <button class="btn" onclick="clearLog()">Clear Log</button>
+            <button class="btn" onclick="copyLogToClipboard()">Copy Log</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global app state
+let activeSchools = [];
+let experimentLog = JSON.parse(localStorage.getItem("midnightAcademyLog")) || [];
+
+// --- Screen navigation
+function enterAcademy(){
+    document.getElementById("introScreen").style.display = "none";
+    document.getElementById("workspaceScreen").style.display = "block";
+    renderLog();
+}
+
+// --- School selection
+function toggleSchool(schoolId){
+    const checkboxMap = {
+        "ThreadWeaver":"school-tw",
+        "HeatKeeper":"school-hk",
+        "EchoShaper":"school-es"
+    };
+    const warningEl = document.getElementById("schoolWarning");
+    const isChecked = document.getElementById(checkboxMap[schoolId]).checked;
+
+    if(isChecked){
+        if(activeSchools.length >= 2){
+            document.getElementById(checkboxMap[schoolId]).checked = false;
+            warningEl.textContent = "Rule violation: You may select maximum TWO magic schools.";
+            return;
+        }
+        activeSchools.push(schoolId);
+    }else{
+        activeSchools = activeSchools.filter(s => s !== schoolId);
+    }
+    warningEl.textContent = "";
+    refreshSpellButtons();
+}
+
+// Render dynamic spell buttons based on active schools
+function refreshSpellButtons(){
+    const area = document.getElementById("spellButtonsArea");
+    area.innerHTML = "";
+    const spellDefs = [
+        {school:"ThreadWeaver", id:"pathSeeking", label:"Path‑Seeking Chant"},
+        {school:"ThreadWeaver", id:"partitionSigil", label:"Partition Sigil"},
+        {school:"ThreadWeaver", id:"cycleBind", label:"Cycle‑Bind"},
+
+        {school:"HeatKeeper", id:"flowShift", label:"Flow‑Shift"},
+        {school:"HeatKeeper", id:"entropyGaze", label:"Entropy Gaze"},
+
+        {school:"EchoShaper", id:"frameWeave", label:"Frame‑Weave"},
+        {school:"EchoShaper", id:"echoTrace", label:"Echo‑Trace"},
+        {school:"EchoShaper", id:"silenceSigil", label:"Silence Sigil"}
+    ];
+
+    spellDefs.forEach(spell=>{
+        if(activeSchools.includes(spell.school)){
+            const btn = document.createElement("button");
+            btn.className = "btn";
+            btn.textContent = spell.label;
+            btn.onclick = ()=> castSpell(spell.id);
+            area.appendChild(btn);
+        }
+    });
+}
+
+// Core spell‑casting logic with knowledge‑based rules
+function castSpell(spellId){
+    let resultText = "";
+
+    if(spellId === "pathSeeking"){
+        resultText = "🧵 Path‑Seeking Chant:\nYou trace threads across nodes to find the shortest route.\n";
+        if(Math.random()<0.35){
+            resultText += "❌ Partial failure: This network is NP‑hard. No instant magic solution; you must do slow exhaustive tracing.";
+            animateResult("fail");
+        }else{
+            resultText += "✅ Success: Clear shortest‑path revealed.";
+            animateResult("success");
+        }
+    }
+    else if(spellId === "partitionSigil"){
+        resultText = "🧵 Partition Sigil:\nYou cut threads to split the network into separate subnetworks.\n✅ Network partitioned.";
+        animateResult("success");
+    }
+    else if(spellId === "cycleBind"){
+        resultText = "🧵 Cycle‑Bind:\nYou detect closed looping threads. Circular feedback loops are marked.";
+        animateResult("success");
+    }
+
+    else if(spellId === "flowShift"){
+        const attemptAbsoluteZero = Math.random() < 0.32;
+        if(attemptAbsoluteZero){
+            resultText = "🔥 Flow‑Shift:\n❌ Spell FAILED. Thermodynamic rule: Absolute zero cannot be achieved. Surplus waste‑heat bursts outward.";
+            animateResult("fail");
+        }else{
+            resultText = "🔥 Flow‑Shift:\n✅ Heat relocated. Waste‑heat must be released elsewhere; energy cannot vanish.";
+            animateResult("success");
+        }
+    }
+    else if(spellId === "entropyGaze"){
+        resultText = "🔥 Entropy Gaze:\nYou perceive disorder glow. Local order can be built, but total academy entropy always increases.";
+        animateResult("success");
+    }
+
+    else if(spellId === "frameWeave"){
+        resultText = "🗣️ Frame‑Weave:\nYou reshape interpretive frames. Facts stay identical, but audience perception shifts.\n⚠️ Limitation: Cannot enforce one single meaning; different listeners will react differently.";
+        animateResult("success");
+    }
+    else if(spellId === "echoTrace"){
+        resultText = "🗣️ Echo‑Trace:\nYou follow how words drift and transform across groups.";
+        animateResult("success");
+    }
+    else if(spellId === "silenceSigil"){
+        resultText = "🗣️ Silence Sigil:\nHidden unspoken assumptions within speech are revealed.";
+        animateResult("success");
+    }
+
+    // Cross‑discipline bonus text when two schools active
+    if(activeSchools.includes("ThreadWeaver") && activeSchools.includes("HeatKeeper")){
+        resultText += "\n\n🔮 Cross‑Discovery (ThreadWeaver + HeatKeeper): You spot heat bottleneck nodes on the thread network. Cutting nodes may trap dangerous heat inside isolated subnetworks.";
+    }
+    if(activeSchools.includes("ThreadWeaver") && activeSchools.includes("EchoShaper")){
+        resultText += "\n\n🔮 Cross‑Discovery (ThreadWeaver + EchoShaper): Graph shows how fast linguistic echoes spread, but cannot predict unpredictable meaning‑drift.";
+    }
+    if(activeSchools.includes("HeatKeeper") && activeSchools.includes("EchoShaper")){
+        resultText += "\n\n🔮 Cross‑Discovery (HeatKeeper + EchoShaper): Sustaining shared understanding costs communication energy. Without maintenance interpretive disorder grows like entropy.";
+    }
+
+    document.getElementById("resultText").innerText = resultText;
+
+    // Save log entry
+    const entry = {
+        timestamp: new Date().toLocaleString(),
+        schools: [...activeSchools],
+        spell: spellId,
+        outcome: resultText
+    };
+    experimentLog.push(entry);
+    localStorage.setItem("midnightAcademyLog", JSON.stringify(experimentLog));
+    renderLog();
+}
+
+function animateResult(type){
+    const panel = document.getElementById("resultPanel");
+    panel.classList.remove("animate-success","animate-fail");
+    void panel.offsetWidth; // trigger reflow
+    if(type === "success") panel.classList.add("animate-success");
+    if(type === "fail") panel.classList.add("animate-fail");
+}
+
+// Log rendering
+function renderLog(){
+    const area = document.getElementById("logArea");
+    area.innerHTML = "";
+    experimentLog.forEach(e=>{
+        const div = document.createElement("div");
+        div.style.marginBottom = "10px";
+        div.innerText = `[${e.timestamp}] Schools: ${e.schools.join(",")||"none"} | Spell: ${e.spell}\n${e.outcome}`;
+        area.appendChild(div);
+    });
+}
+
+function clearLog(){
+    experimentLog = [];
+    localStorage.removeItem("midnightAcademyLog");
+    renderLog();
+}
+
+async function copyLogToClipboard(){
+    let fullText = experimentLog.map(e=>`[${e.timestamp}] Schools: ${e.schools.join(",")||"none"} | Spell: ${e.spell}\n${e.outcome}`).join("\n\n");
+    await navigator.clipboard.writeText(fullText);
+    alert("Log copied to clipboard");
+}
+
+function openTrial(){
+    document.getElementById("trialBox").classList.remove("trial-hidden");
+    document.getElementById("trialText").innerHTML = `<p><strong>Trial: Thermal‑Network puzzle</strong></p>
+    <p>Select Thread‑Weaver + Heat‑Keeper. Try Partition Sigil to cut network threads. Watch for trapped heat risk in your magic result panel.</p>
+    <p>Goal: Observe cross‑discipline side‑effect, no win/lose condition.</p>`;
+}
+function closeTrial(){
+    document.getElementById("trialBox").classList.add("trial-hidden");
+}
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Midnight Academy</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Georgia, serif;
+        }
+        body {
+            background-color: #0b0b1a;
+            color: #e2e2ff;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            width: 100%;
+        }
+        .intro-screen {
+            text-align: center;
+            margin-top: 60px;
+        }
+        .intro-screen h1 {
+            font-size: 2.8rem;
+            color: #c9c9ff;
+            text-shadow: 0 0 12px #7070ff;
+        }
+        .btn {
+            background-color: #252550;
+            color: #e2e2ff;
+            border: 1px solid #7070ff;
+            padding: 10px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 4px;
+        }
+        .btn:hover {
+            background-color: #383878;
+            box-shadow: 0 0 8px #7070ff77;
+        }
+        .workspace {
+            display: none;
+        }
+        .panel {
+            border: 1px solid #3a3a70;
+            padding: 16px;
+            border-radius: 8px;
+            margin:12px 0;
+            background-color: #14142c;
+        }
+        .row-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap:14px;
+        }
+        @keyframes successGlow {
+            0% {box-shadow:0 0 4px #44ff8855;}
+            50% {box-shadow:0 0 18px #44ff88aa;}
+            100% {box-shadow:0 0 4px #44ff8855;}
+        }
+        @keyframes failShake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            50% { transform: translateX(6px); }
+            75% { transform: translateX(-6px); }
+            100% { transform: translateX(0); }
+        }
+        .result-box {
+            min-height:140px;
+            white-space: pre-wrap;
+        }
+        .animate-success {
+            animation: successGlow 0.7s ease-out;
+        }
+        .animate-fail {
+            animation: failShake 0.4s ease-out;
+            border-color:#ff5566;
+        }
+        .log-area {
+            max-height:260px;
+            overflow-y:auto;
+            font-size:0.88rem;
+            color:#c0c0dd;
+        }
+        .trial-hidden {
+            display:none;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Intro Screen -->
+    <div id="introScreen" class="intro-screen">
+        <h1>The Midnight Academy</h1>
+        <p>At midnight the campus falls quiet. In dreams, the university transforms into an academy that only exists after midnight.<br>Every discipline is a form of magic, bound by real-world knowledge rules.</p>
+        <button class="btn" onclick="enterAcademy()">Enter the Academy (Dream)</button>
+    </div>
+
+    <!-- Main Workspace -->
+    <div id="workspaceScreen" class="workspace">
+        <h2>The Midnight Academy — Apprentice Workspace</h2>
+
+        <div class="panel">
+            <h3>1. Select Magic Schools (max 2)</h3>
+            <label><input type="checkbox" id="school-tw" onchange="toggleSchool('ThreadWeaver')"> 🧵 Thread-Weaver (Graph Theory)</label>
+            <br>
+            <label><input type="checkbox" id="school-hk" onchange="toggleSchool('HeatKeeper')"> 🔥 Heat-Keeper (Thermodynamics)</label>
+            <br>
+            <label><input type="checkbox" id="school-es" onchange="toggleSchool('EchoShaper')"> 🗣️ Echo-Shaper (Sociolinguistics)</label>
+            <p id="schoolWarning" style="color:#ff9999"></p>
+        </div>
+
+        <div class="row-layout">
+            <div class="panel">
+                <h3>2. Cast Spells</h3>
+                <div id="spellButtonsArea"></div>
+                <hr>
+                <h4>Challenge Trials (rule‑puzzles, no fighting)</h4>
+                <button class="btn" onclick="openTrial()">Begin Trial</button>
+                <div id="trialBox" class="trial-hidden panel">
+                    <div id="trialText"></div>
+                    <button class="btn" onclick="closeTrial()">Close Trial</button>
+                </div>
+            </div>
+
+            <div class="panel result-box" id="resultPanel">
+                <h3>✨ Magic Result</h3>
+                <div id="resultText"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>📜 Experiment Log (saved locally in browser)</h3>
+            <div id="logArea" class="log-area"></div>
+            <button class="btn" onclick="clearLog()">Clear Log</button>
+            <button class="btn" onclick="copyLogToClipboard()">Copy Log</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global app state
+let activeSchools = [];
+let experimentLog = JSON.parse(localStorage.getItem("midnightAcademyLog")) || [];
+
+// --- Screen navigation
+function enterAcademy(){
+    document.getElementById("introScreen").style.display = "none";
+    document.getElementById("workspaceScreen").style.display = "block";
+    renderLog();
+}
+
+// --- School selection
+function toggleSchool(schoolId){
+    const checkboxMap = {
+        "ThreadWeaver":"school-tw",
+        "HeatKeeper":"school-hk",
+        "EchoShaper":"school-es"
+    };
+    const warningEl = document.getElementById("schoolWarning");
+    const isChecked = document.getElementById(checkboxMap[schoolId]).checked;
+
+    if(isChecked){
+        if(activeSchools.length >= 2){
+            document.getElementById(checkboxMap[schoolId]).checked = false;
+            warningEl.textContent = "Rule violation: You may select maximum TWO magic schools.";
+            return;
+        }
+        activeSchools.push(schoolId);
+    }else{
+        activeSchools = activeSchools.filter(s => s !== schoolId);
+    }
+    warningEl.textContent = "";
+    refreshSpellButtons();
+}
+
+// Render dynamic spell buttons based on active schools
+function refreshSpellButtons(){
+    const area = document.getElementById("spellButtonsArea");
+    area.innerHTML = "";
+    const spellDefs = [
+        {school:"ThreadWeaver", id:"pathSeeking", label:"Path‑Seeking Chant"},
+        {school:"ThreadWeaver", id:"partitionSigil", label:"Partition Sigil"},
+        {school:"ThreadWeaver", id:"cycleBind", label:"Cycle‑Bind"},
+
+        {school:"HeatKeeper", id:"flowShift", label:"Flow‑Shift"},
+        {school:"HeatKeeper", id:"entropyGaze", label:"Entropy Gaze"},
+
+        {school:"EchoShaper", id:"frameWeave", label:"Frame‑Weave"},
+        {school:"EchoShaper", id:"echoTrace", label:"Echo‑Trace"},
+        {school:"EchoShaper", id:"silenceSigil", label:"Silence Sigil"}
+    ];
+
+    spellDefs.forEach(spell=>{
+        if(activeSchools.includes(spell.school)){
+            const btn = document.createElement("button");
+            btn.className = "btn";
+            btn.textContent = spell.label;
+            btn.onclick = ()=> castSpell(spell.id);
+            area.appendChild(btn);
+        }
+    });
+}
+
+// Core spell‑casting logic with knowledge‑based rules
+function castSpell(spellId){
+    let resultText = "";
+
+    if(spellId === "pathSeeking"){
+        resultText = "🧵 Path‑Seeking Chant:\nYou trace threads across nodes to find the shortest route.\n";
+        if(Math.random()<0.35){
+            resultText += "❌ Partial failure: This network is NP‑hard. No instant magic solution; you must do slow exhaustive tracing.";
+            animateResult("fail");
+        }else{
+            resultText += "✅ Success: Clear shortest‑path revealed.";
+            animateResult("success");
+        }
+    }
+    else if(spellId === "partitionSigil"){
+        resultText = "🧵 Partition Sigil:\nYou cut threads to split the network into separate subnetworks.\n✅ Network partitioned.";
+        animateResult("success");
+    }
+    else if(spellId === "cycleBind"){
+        resultText = "🧵 Cycle‑Bind:\nYou detect closed looping threads. Circular feedback loops are marked.";
+        animateResult("success");
+    }
+
+    else if(spellId === "flowShift"){
+        const attemptAbsoluteZero = Math.random() < 0.32;
+        if(attemptAbsoluteZero){
+            resultText = "🔥 Flow‑Shift:\n❌ Spell FAILED. Thermodynamic rule: Absolute zero cannot be achieved. Surplus waste‑heat bursts outward.";
+            animateResult("fail");
+        }else{
+            resultText = "🔥 Flow‑Shift:\n✅ Heat relocated. Waste‑heat must be released elsewhere; energy cannot vanish.";
+            animateResult("success");
+        }
+    }
+    else if(spellId === "entropyGaze"){
+        resultText = "🔥 Entropy Gaze:\nYou perceive disorder glow. Local order can be built, but total academy entropy always increases.";
+        animateResult("success");
+    }
+
+    else if(spellId === "frameWeave"){
+        resultText = "🗣️ Frame‑Weave:\nYou reshape interpretive frames. Facts stay identical, but audience perception shifts.\n⚠️ Limitation: Cannot enforce one single meaning; different listeners will react differently.";
+        animateResult("success");
+    }
+    else if(spellId === "echoTrace"){
+        resultText = "🗣️ Echo‑Trace:\nYou follow how words drift and transform across groups.";
+        animateResult("success");
+    }
+    else if(spellId === "silenceSigil"){
+        resultText = "🗣️ Silence Sigil:\nHidden unspoken assumptions within speech are revealed.";
+        animateResult("success");
+    }
+
+    // Cross‑discipline bonus text when two schools active
+    if(activeSchools.includes("ThreadWeaver") && activeSchools.includes("HeatKeeper")){
+        resultText += "\n\n🔮 Cross‑Discovery (ThreadWeaver + HeatKeeper): You spot heat bottleneck nodes on the thread network. Cutting nodes may trap dangerous heat inside isolated subnetworks.";
+    }
+    if(activeSchools.includes("ThreadWeaver") && activeSchools.includes("EchoShaper")){
+        resultText += "\n\n🔮 Cross‑Discovery (ThreadWeaver + EchoShaper): Graph shows how fast linguistic echoes spread, but cannot predict unpredictable meaning‑drift.";
+    }
+    if(activeSchools.includes("HeatKeeper") && activeSchools.includes("EchoShaper")){
+        resultText += "\n\n🔮 Cross‑Discovery (HeatKeeper + EchoShaper): Sustaining shared understanding costs communication energy. Without maintenance interpretive disorder grows like entropy.";
+    }
+
+    document.getElementById("resultText").innerText = resultText;
+
+    // Save log entry
+    const entry = {
+        timestamp: new Date().toLocaleString(),
+        schools: [...activeSchools],
+        spell: spellId,
+        outcome: resultText
+    };
+    experimentLog.push(entry);
+    localStorage.setItem("midnightAcademyLog", JSON.stringify(experimentLog));
+    renderLog();
+}
+
+function animateResult(type){
+    const panel = document.getElementById("resultPanel");
+    panel.classList.remove("animate-success","animate-fail");
+    void panel.offsetWidth; // trigger reflow
+    if(type === "success") panel.classList.add("animate-success");
+    if(type === "fail") panel.classList.add("animate-fail");
+}
+
+// Log rendering
+function renderLog(){
+    const area = document.getElementById("logArea");
+    area.innerHTML = "";
+    experimentLog.forEach(e=>{
+        const div = document.createElement("div");
+        div.style.marginBottom = "10px";
+        div.innerText = `[${e.timestamp}] Schools: ${e.schools.join(",")||"none"} | Spell: ${e.spell}\n${e.outcome}`;
+        area.appendChild(div);
+    });
+}
+
+function clearLog(){
+    experimentLog = [];
+    localStorage.removeItem("midnightAcademyLog");
+    renderLog();
+}
+
+async function copyLogToClipboard(){
+    let fullText = experimentLog.map(e=>`[${e.timestamp}] Schools: ${e.schools.join(",")||"none"} | Spell: ${e.spell}\n${e.outcome}`).join("\n\n");
+    await navigator.clipboard.writeText(fullText);
+    alert("Log copied to clipboard");
+}
+
+function openTrial(){
+    document.getElementById("trialBox").classList.remove("trial-hidden");
+    document.getElementById("trialText").innerHTML = `<p><strong>Trial: Thermal‑Network puzzle</strong></p>
+    <p>Select Thread‑Weaver + Heat‑Keeper. Try Partition Sigil to cut network threads. Watch for trapped heat risk in your magic result panel.</p>
+    <p>Goal: Observe cross‑discipline side‑effect, no win/lose condition.</p>`;
+}
+function closeTrial(){
+    document.getElementById("trialBox").classList.add("trial-hidden");
+}
+</script>
+</body>
+</html>
